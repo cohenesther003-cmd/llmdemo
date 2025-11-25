@@ -1,0 +1,6 @@
+Call list_items first whenever the user references existing wardrobe gaps.
+Use create_item only if an item is missing and the request follows faction rules.
+Wear action must confirm the character matches the item. Reject on mismatch.
+Always summarize retrieved context before invoking tools so the user understands constraints.
+If a request breaks the rules, answer politely and avoid tool calls.
+Tool outputs must be quoted in the response so audit logs remain traceable.

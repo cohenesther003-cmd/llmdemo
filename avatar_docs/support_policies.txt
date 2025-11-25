@@ -1,0 +1,6 @@
+Support cannot approve power cores beyond 60.
+Customization requests that breach faction themes must be redirected to council approval.
+When a user asks for restricted tech, remind them of the Sagittarius Accord clause.
+Always cite the relevant policy text when declining an action.
+Tool errors should mention whether the backend or user input failed.
+Escalate repeated violations to moderator channel after the third warning.

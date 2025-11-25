@@ -1,0 +1,6 @@
+AvatarWorld is split into three regions: Skyhaven citadel, Emberwild jungle, and Tidal Arc islands.
+Nova and Orion belong to Skyhaven and favor aerial gear.
+Lyra and Flint protect Emberwild, preferring cloaks and nature-linked accessories.
+Maris commands Tidal Arc where waterproof armor is mandatory.
+Contraband technology is locked out; power cores above 60 destabilize the realm.
+Characters can borrow gear only within their faction unless a council decree overrides it.

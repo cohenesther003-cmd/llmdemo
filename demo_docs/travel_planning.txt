@@ -1,0 +1,5 @@
+Build a travel skeleton before booking: anchor each day with one must-do,
+group stops by neighborhood to cut transit time, and leave open blocks for
+serendipity. Track reservations in one shared doc and note refund deadlines.
+Carry offline copies of IDs plus transit cards, and screenshot QR codes since
+ticket apps often need connectivity to reload.

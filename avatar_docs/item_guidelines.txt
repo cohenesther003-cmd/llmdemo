@@ -1,0 +1,6 @@
+Every item must encode its faction in either the name or description.
+Power rating ranges: support gear 5–20, combat gear 20–50, relic gear 50–60.
+Dresses map to ceremonial slots, accessories are stackable, armor blocks other categories.
+Naming convention: adjective + noun (e.g., "Starlight Cape").
+Nova-exclusive gear always includes luminous or wind motifs; Lyra needs flora cues.
+Rejected items stay logged for 24 hours before removal.
