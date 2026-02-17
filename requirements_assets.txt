@@ -1,0 +1,18 @@
+# Dependencies for the asset search pipeline
+# Install with: pip install -r requirements_assets.txt
+
+# Vision model (Gemini)
+google-generativeai>=0.7.0
+
+# Text embeddings (local, free)
+sentence-transformers>=3.0.0
+
+# PostgreSQL + pgvector
+psycopg[binary]>=3.1.0
+
+# FastAPI backend
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Image handling
+Pillow>=10.0.0

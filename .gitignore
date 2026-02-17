@@ -1,0 +1,16 @@
+# Environment / secrets — NEVER commit real keys
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Editors
+.vscode/
+.idea/
+*.swp

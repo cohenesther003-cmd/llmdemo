@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asset Search</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f13;
+      color: #e0e0e8;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1a24;
+      border-bottom: 1px solid #2a2a3a;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #a78bfa;
+      white-space: nowrap;
+    }
+
+    #search-bar {
+      flex: 1;
+      display: flex;
+      gap: 8px;
+    }
+
+    #search-input {
+      flex: 1;
+      background: #252535;
+      border: 1px solid #3a3a50;
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: #e0e0e8;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #search-input:focus { border-color: #a78bfa; }
+    #search-input::placeholder { color: #555570; }
+
+    #search-btn {
+      background: #7c3aed;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #search-btn:hover { background: #6d28d9; }
+    #search-btn:disabled { background: #3a2a60; cursor: default; }
+
+    #status {
+      text-align: center;
+      padding: 14px;
+      color: #6666aa;
+      font-size: 0.9rem;
+      min-height: 40px;
+    }
+
+    #results {
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* ── Group card ── */
+    .group-card {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #20202e;
+      border-bottom: 1px solid #2a2a3a;
+    }
+
+    .group-name {
+      font-weight: 600;
+      font-size: 1rem;
+      color: #c4b5fd;
+    }
+
+    .badge {
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+    .badge-parts { background: #312e81; color: #a5b4fc; }
+    .badge-single { background: #1e3a2f; color: #6ee7b7; }
+
+    .score-pill {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    /* ── Parts grid inside a group ── */
+    .parts-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    /* ── Individual sprite tile ── */
+    .sprite-tile {
+      width: 140px;
+      cursor: pointer;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #252535;
+      border: 1px solid #2e2e45;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .sprite-tile:hover { border-color: #7c3aed; transform: translateY(-2px); }
+
+    .sprite-thumb {
+      width: 140px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1e1e2e;
+      overflow: hidden;
+    }
+    .sprite-thumb img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated; /* keeps pixel art crisp */
+    }
+    .sprite-thumb .no-thumb {
+      font-size: 2.5rem;
+      opacity: 0.3;
+    }
+
+    .sprite-info {
+      padding: 6px 8px 8px;
+    }
+    .sprite-filename {
+      font-size: 0.75rem;
+      color: #aaa;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sprite-part-label {
+      font-size: 0.68rem;
+      color: #6666aa;
+    }
+
+    /* ── Modal overlay ── */
+    #modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal.open { display: flex; }
+
+    #modal-box {
+      background: #1a1a24;
+      border: 1px solid #3a3a55;
+      border-radius: 14px;
+      max-width: 560px;
+      width: 90%;
+      padding: 24px;
+      position: relative;
+    }
+
+    #modal-close {
+      position: absolute;
+      top: 12px; right: 16px;
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 1.4rem;
+      cursor: pointer;
+    }
+    #modal-close:hover { color: #fff; }
+
+    #modal-img-wrap {
+      text-align: center;
+      margin-bottom: 16px;
+      background: #111118;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-img { max-width: 100%; max-height: 320px; object-fit: contain; image-rendering: pixelated; }
+    #modal-no-img { font-size: 4rem; opacity: 0.2; }
+
+    #modal-title { font-size: 1rem; font-weight: 600; color: #c4b5fd; margin-bottom: 6px; }
+    #modal-desc { font-size: 0.88rem; color: #aaa; line-height: 1.5; margin-bottom: 10px; }
+
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag {
+      background: #252540;
+      border: 1px solid #3a3a58;
+      color: #9999cc;
+      font-size: 0.72rem;
+      padding: 2px 9px;
+      border-radius: 20px;
+    }
+
+    #modal-filepath {
+      margin-top: 12px;
+      font-size: 0.72rem;
+      color: #55556a;
+      word-break: break-all;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #44445a;
+    }
+    .empty-state p { margin-top: 8px; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Asset Search</h1>
+  <div id="search-bar">
+    <input id="search-input" type="text" placeholder="Search sprites… e.g. blue tree, wooden closet, sword" autofocus />
+    <button id="search-btn">Search</button>
+  </div>
+</header>
+
+<div id="status">Type a query and press Search (or Enter)</div>
+<div id="results"></div>
+
+<!-- Detail modal -->
+<div id="modal">
+  <div id="modal-box">
+    <button id="modal-close">✕</button>
+    <div id="modal-img-wrap">
+      <img id="modal-img" src="" alt="" style="display:none" />
+      <div id="modal-no-img">🖼</div>
+    </div>
+    <div id="modal-title"></div>
+    <div id="modal-desc"></div>
+    <div class="tag-list" id="modal-tags"></div>
+    <div id="modal-filepath"></div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = "http://localhost:8001";
+
+  const searchInput = document.getElementById("search-input");
+  const searchBtn   = document.getElementById("search-btn");
+  const statusEl    = document.getElementById("status");
+  const resultsEl   = document.getElementById("results");
+  const modal       = document.getElementById("modal");
+
+  // ── Search ──────────────────────────────────────────────────────────────
+  async function doSearch() {
+    const q = searchInput.value.trim();
+    if (!q) return;
+
+    searchBtn.disabled = true;
+    statusEl.textContent = "Searching…";
+    resultsEl.innerHTML = "";
+
+    try {
+      const res = await fetch(`${API_BASE}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q, top_k: 30, group_results: true }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (!data.results || data.results.length === 0) {
+        statusEl.textContent = `No results for "${q}"`;
+        resultsEl.innerHTML = `
+          <div class="empty-state">
+            <div style="font-size:3rem">🔍</div>
+            <p>No sprites matched your search. Try different keywords.</p>
+          </div>`;
+        return;
+      }
+
+      statusEl.textContent = `${data.results.length} group(s) found for "${q}"`;
+      renderGroups(data.results);
+
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+    } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  function renderGroups(groups) {
+    resultsEl.innerHTML = "";
+
+    for (const group of groups) {
+      const card = document.createElement("div");
+      card.className = "group-card";
+
+      const partCount = group.parts.length;
+      const isMultiPart = partCount > 1 || group.is_part;
+      const badgeClass = isMultiPart ? "badge-parts" : "badge-single";
+      const badgeText  = isMultiPart ? `${partCount} part${partCount > 1 ? "s" : ""}` : "single";
+      const score      = group.best_score != null
+        ? `score: ${(group.best_score * 100).toFixed(0)}%` : "";
+
+      card.innerHTML = `
+        <div class="group-header">
+          <span class="group-name">${escHtml(group.group_name)}</span>
+          <span class="badge ${badgeClass}">${badgeText}</span>
+          <span class="score-pill">${score}</span>
+        </div>
+        <div class="parts-grid" id="parts-${escHtml(group.group_name)}"></div>
+      `;
+
+      resultsEl.appendChild(card);
+
+      const grid = card.querySelector(".parts-grid");
+      for (const asset of group.parts) {
+        grid.appendChild(makeTile(asset));
+      }
+    }
+  }
+
+  function makeTile(asset) {
+    const tile = document.createElement("div");
+    tile.className = "sprite-tile";
+
+    const thumbHtml = asset.thumbnail_url
+      ? `<img src="${API_BASE}${asset.thumbnail_url}" alt="${escHtml(asset.filename)}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />`
+      : "";
+
+    const partLabel = asset.is_part && asset.part_number != null
+      ? `<div class="sprite-part-label">Part ${asset.part_number}</div>` : "";
+
+    tile.innerHTML = `
+      <div class="sprite-thumb">
+        ${thumbHtml}
+        <div class="no-thumb" ${asset.thumbnail_url ? 'style="display:none"' : ""}>🖼</div>
+      </div>
+      <div class="sprite-info">
+        <div class="sprite-filename" title="${escHtml(asset.filename)}">${escHtml(asset.filename)}</div>
+        ${partLabel}
+      </div>
+    `;
+
+    tile.addEventListener("click", () => openModal(asset));
+    return tile;
+  }
+
+  // ── Modal ────────────────────────────────────────────────────────────────
+  function openModal(asset) {
+    const imgEl   = document.getElementById("modal-img");
+    const noImgEl = document.getElementById("modal-no-img");
+
+    if (asset.thumbnail_url) {
+      imgEl.src = `${API_BASE}${asset.thumbnail_url}`;
+      imgEl.style.display = "block";
+      noImgEl.style.display = "none";
+    } else {
+      imgEl.style.display = "none";
+      noImgEl.style.display = "block";
+    }
+
+    document.getElementById("modal-title").textContent = asset.filename;
+    document.getElementById("modal-desc").textContent  = asset.description || "No description available.";
+    document.getElementById("modal-filepath").textContent = asset.filepath || "";
+
+    const tagsEl = document.getElementById("modal-tags");
+    tagsEl.innerHTML = (asset.tags || []).map(t => `<span class="tag">${escHtml(t)}</span>`).join("");
+
+    modal.classList.add("open");
+  }
+
+  function closeModal() { modal.classList.remove("open"); }
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+
+  // ── Keyboard ─────────────────────────────────────────────────────────────
+  searchInput.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+  searchBtn.addEventListener("click", doSearch);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+  function escHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+</script>
+</body>
+</html>
