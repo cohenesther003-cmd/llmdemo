@@ -18,7 +18,6 @@ Environment variables:
 
 import os
 from pathlib import Path
-from typing import Optional
 from urllib.parse import quote
 
 import chromadb
@@ -26,12 +25,24 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import HashingVectorizer
 
 # ── Config ────────────────────────────────────────────────────────────────────
-EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBED_DIMS = 384
 COLLECTION_NAME = "assets"
 DEFAULT_TOP_K = 20
+
+# Must match the vectorizer used in asset_ingest.py
+_local_embedder = HashingVectorizer(
+    n_features=EMBED_DIMS,
+    norm="l2",
+    analyzer="word",
+    ngram_range=(1, 2),
+)
+
+
+def local_embed(text: str) -> list:
+    return _local_embedder.transform([text]).toarray()[0].tolist()
 
 app = FastAPI(title="Asset Search API")
 
@@ -48,15 +59,7 @@ if ASSETS_DIR and Path(ASSETS_DIR).is_dir():
     app.mount("/images", StaticFiles(directory=ASSETS_DIR), name="images")
 
 # ── Singletons loaded once at startup ────────────────────────────────────────
-_embedder: Optional[SentenceTransformer] = None
 _collection = None
-
-
-def get_embedder() -> SentenceTransformer:
-    global _embedder
-    if _embedder is None:
-        _embedder = SentenceTransformer(EMBED_MODEL_NAME)
-    return _embedder
 
 
 def get_collection():
@@ -117,8 +120,7 @@ def search(payload: SearchRequest):
     if not q:
         raise HTTPException(400, "Query cannot be empty")
 
-    embedder = get_embedder()
-    query_vec = embedder.encode(q, normalize_embeddings=True).tolist()
+    query_vec = local_embed(q)
 
     collection = get_collection()
     results = collection.query(
