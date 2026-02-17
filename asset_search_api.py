@@ -1,37 +1,40 @@
 """
-asset_search_api.py — Phase 2: FastAPI backend for sprite semantic search
+asset_search_api.py — Phase 2: FastAPI search API backed by ChromaDB
+
+No Docker needed. ChromaDB reads from the local ./chroma_db folder.
 
 Endpoints:
     POST /search          — semantic search by free text
-    GET  /asset/{id}      — fetch one asset's metadata
+    GET  /asset/{id}      — fetch one asset by its filepath ID
     GET  /group/{name}    — fetch all parts of a named asset group
 
 Usage:
-    uvicorn asset_search_api:app --reload --port 8001
+    ASSETS_DIR=/path/to/sprites uvicorn asset_search_api:app --reload --port 8001
 
-Environment variables (same as rest of project):
-    PGVECTOR_HOST / PGVECTOR_PORT / PGVECTOR_DB / PGVECTOR_USER / PGVECTOR_PASSWORD
+Environment variables:
+    ASSETS_DIR   — absolute path to sprite folder (used to serve thumbnail images)
+    CHROMA_DIR   — ChromaDB data folder (default: ./chroma_db)
 """
 
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
-import psycopg
+import chromadb
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from psycopg.rows import dict_row
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 
-# ── Config ───────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
+COLLECTION_NAME = "assets"
 DEFAULT_TOP_K = 20
 
 app = FastAPI(title="Asset Search API")
 
-# Allow the local HTML UI to call the API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,14 +42,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve sprite images as static files so the UI can display thumbnails.
-# The path /images/* will serve files from the ASSETS_DIR env var.
-ASSETS_DIR = os.environ.get("ASSETS_DIR", "")
+# Serve sprite images so the browser can display thumbnails
+ASSETS_DIR = os.environ.get("ASSETS_DIR", "").rstrip("/")
 if ASSETS_DIR and Path(ASSETS_DIR).is_dir():
     app.mount("/images", StaticFiles(directory=ASSETS_DIR), name="images")
 
-# Load embedding model once at startup (cached in memory)
+# ── Singletons loaded once at startup ────────────────────────────────────────
 _embedder: Optional[SentenceTransformer] = None
+_collection = None
 
 
 def get_embedder() -> SentenceTransformer:
@@ -56,47 +59,49 @@ def get_embedder() -> SentenceTransformer:
     return _embedder
 
 
-# ── DB ────────────────────────────────────────────────────────────────────────
-def db_connect():
-    return psycopg.connect(
-        host=os.environ.get("PGVECTOR_HOST", "localhost"),
-        port=int(os.environ.get("PGVECTOR_PORT", 5433)),
-        dbname=os.environ.get("PGVECTOR_DB", "rag_demo"),
-        user=os.environ.get("PGVECTOR_USER", "postgres"),
-        password=os.environ.get("PGVECTOR_PASSWORD", "ragpass"),
-        row_factory=dict_row,
-    )
+def get_collection():
+    global _collection
+    if _collection is None:
+        chroma_dir = os.environ.get("CHROMA_DIR", "./chroma_db")
+        client = chromadb.PersistentClient(path=chroma_dir)
+        _collection = client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},
+        )
+    return _collection
 
 
-def row_to_asset(row: dict) -> dict:
-    """Convert a DB row to a clean API response dict."""
-    filepath = row.get("filepath", "")
-    # Build a URL the browser can use to display the thumbnail.
-    # Works when ASSETS_DIR is set and StaticFiles is mounted at /images.
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def meta_to_asset(meta: dict, doc_id: str, score: float | None = None) -> dict:
+    """Convert ChromaDB metadata row into a clean API response dict."""
+    filepath = meta.get("filepath", "")
     thumbnail_url = None
     if ASSETS_DIR and filepath.startswith(ASSETS_DIR):
         rel = filepath[len(ASSETS_DIR):].lstrip("/")
-        thumbnail_url = f"/images/{rel}"
+        thumbnail_url = f"/images/{quote(rel)}"
+
+    is_part_str = meta.get("is_part", "False")
+    part_number = meta.get("part_number", -1)
 
     return {
-        "id": row["id"],
-        "filename": row["filename"],
+        "id": doc_id,
+        "filename": meta.get("filename", ""),
         "filepath": filepath,
         "thumbnail_url": thumbnail_url,
-        "group_name": row["group_name"],
-        "is_part": row["is_part"],
-        "part_number": row["part_number"],
-        "description": row["description"],
-        "tags": row["tags"] or [],
-        "score": row.get("score"),
+        "group_name": meta.get("group_name", ""),
+        "is_part": is_part_str == "True",
+        "part_number": part_number if part_number != -1 else None,
+        "description": meta.get("description", ""),
+        "tags": [t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
+        "score": round(score, 4) if score is not None else None,
     }
 
 
-# ── Request / Response models ─────────────────────────────────────────────────
+# ── Request model ─────────────────────────────────────────────────────────────
 class SearchRequest(BaseModel):
     q: str
     top_k: int = DEFAULT_TOP_K
-    group_results: bool = True   # if True, group parts under their parent asset
+    group_results: bool = True
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -105,20 +110,8 @@ def search(payload: SearchRequest):
     """
     Semantic search over all ingested sprites.
 
-    When group_results=True (default), results are returned as:
-      {
-        "results": [
-          {
-            "group_name": "closet",
-            "is_part": true,
-            "parts": [ {...asset...}, {...asset...} ],   # individual parts
-            "best_score": 0.92
-          },
-          ...
-        ]
-      }
-
-    Each item also includes standalone assets (is_part=False) as single-item groups.
+    Returns results grouped by asset name. For example, searching "closet"
+    returns one group called "closet" containing all its individual part sprites.
     """
     q = payload.q.strip()
     if not q:
@@ -127,29 +120,30 @@ def search(payload: SearchRequest):
     embedder = get_embedder()
     query_vec = embedder.encode(q, normalize_embeddings=True).tolist()
 
-    with db_connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT
-                id, filename, filepath, group_name, is_part, part_number,
-                description, tags,
-                1 - (embedding <=> %s::vector) AS score
-            FROM assets
-            ORDER BY embedding <=> %s::vector
-            LIMIT %s
-            """,
-            (query_vec, query_vec, payload.top_k),
-        ).fetchall()
+    collection = get_collection()
+    results = collection.query(
+        query_embeddings=[query_vec],
+        n_results=min(payload.top_k, collection.count() or 1),
+        include=["metadatas", "distances", "documents"],
+    )
 
-    if not rows:
+    ids       = results["ids"][0]
+    metadatas = results["metadatas"][0]
+    distances = results["distances"][0]   # cosine distance (lower = more similar)
+
+    if not ids:
         return {"results": [], "query": q}
 
-    assets = [row_to_asset(r) for r in rows]
+    # Convert distance → similarity score (0–1, higher = better)
+    assets = [
+        meta_to_asset(meta, doc_id, score=1 - dist)
+        for doc_id, meta, dist in zip(ids, metadatas, distances)
+    ]
 
     if not payload.group_results:
         return {"results": assets, "query": q}
 
-    # Group assets by group_name, collecting parts together
+    # Group by group_name
     groups: dict[str, dict] = {}
     for asset in assets:
         gname = asset["group_name"]
@@ -168,48 +162,39 @@ def search(payload: SearchRequest):
     for g in groups.values():
         g["parts"].sort(key=lambda a: (a["part_number"] is None, a["part_number"] or 0))
 
-    # Sort groups by best score descending
     sorted_groups = sorted(groups.values(), key=lambda g: g["best_score"], reverse=True)
-
     return {"results": sorted_groups, "query": q}
 
 
-@app.get("/asset/{asset_id}")
-def get_asset(asset_id: int):
-    """Fetch a single asset by its DB id."""
-    with db_connect() as conn:
-        row = conn.execute(
-            """
-            SELECT id, filename, filepath, group_name, is_part, part_number,
-                   description, tags
-            FROM assets WHERE id = %s
-            """,
-            (asset_id,),
-        ).fetchone()
-    if not row:
-        raise HTTPException(404, f"Asset {asset_id} not found")
-    return row_to_asset(row)
+@app.get("/asset/{asset_id:path}")
+def get_asset(asset_id: str):
+    """Fetch a single asset by its filepath (used as ID)."""
+    collection = get_collection()
+    result = collection.get(ids=[asset_id], include=["metadatas"])
+    if not result["ids"]:
+        raise HTTPException(404, f"Asset not found: {asset_id}")
+    return meta_to_asset(result["metadatas"][0], asset_id)
 
 
 @app.get("/group/{group_name}")
 def get_group(group_name: str):
-    """Fetch all assets (parts or standalone) in a named group."""
-    with db_connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, filename, filepath, group_name, is_part, part_number,
-                   description, tags
-            FROM assets
-            WHERE group_name = %s
-            ORDER BY part_number NULLS LAST
-            """,
-            (group_name,),
-        ).fetchall()
-    if not rows:
+    """Fetch all sprites belonging to a named group (e.g. 'closet')."""
+    collection = get_collection()
+    result = collection.get(
+        where={"group_name": group_name},
+        include=["metadatas"],
+    )
+    if not result["ids"]:
         raise HTTPException(404, f"Group '{group_name}' not found")
-    return {"group_name": group_name, "parts": [row_to_asset(r) for r in rows]}
+    parts = [
+        meta_to_asset(meta, doc_id)
+        for doc_id, meta in zip(result["ids"], result["metadatas"])
+    ]
+    parts.sort(key=lambda a: (a["part_number"] is None, a["part_number"] or 0))
+    return {"group_name": group_name, "parts": parts}
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    collection = get_collection()
+    return {"status": "ok", "total_assets": collection.count()}
