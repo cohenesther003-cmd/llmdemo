@@ -10,6 +10,9 @@ venv/
 dist/
 build/
 
+# Generated databases (re-created by running asset_ingest.py)
+chroma_db/
+
 # Editors
 .vscode/
 .idea/
