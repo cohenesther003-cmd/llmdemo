@@ -1,6 +1,6 @@
-# Pazu LLM Learning Track
+# LLM Learning Track
 
-This repo walks through a step-by-step LLM learning journey: embedding AvatarWorld docs into pgvector, exposing the Pazu backend API, and chatting via a tool-aware CLI. Follow the sections below to reproduce the full environment.
+This repo walks through a step-by-step LLM learning journey: embedding app docs into pgvector, exposing the backend API, and chatting via a tool-aware CLI. Follow the sections below to reproduce the full environment.
 
 ---
 
