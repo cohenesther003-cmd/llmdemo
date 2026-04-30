@@ -96,7 +96,7 @@ The CLI:
 - “List any relic-grade armor for Orion, then summarize if it matches his faction rules.”
 - “Lyra needs a flora-themed cloak with power 15; add it for her and equip it.”
 
-Watch the logs when `PAZU_DEBUG=1` to see tool calls and results.
+Watch the logs when `_DEBUG=1` to see tool calls and results.
 
 ---
 
@@ -107,5 +107,5 @@ Watch the logs when `PAZU_DEBUG=1` to see tool calls and results.
 4. `uvicorn step05_pazu:app --reload` running in a separate terminal.
 5. `python step06_cli_chat_tools.py` running in another terminal for the interactive chat.
 
-You now have a full AvatarWorld learning environment: embeddings in pgvector, a FastAPI backend acting as tools, and a CLI assistant that performs RAG + tool calls in response to user prompts. Experiment with more docs, new tool endpoints, or turning the CLI into a web UI as next steps.
+embeddings in pgvector, a FastAPI backend acting as tools, and a CLI assistant that performs RAG + tool calls in response to user prompts. Experiment with more docs, new tool endpoints, or turning the CLI into a web UI as next steps.
 
